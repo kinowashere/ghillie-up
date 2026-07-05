@@ -15,18 +15,31 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useRef, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Switch } from "./Switch";
 import { parseProfile } from "@/lib/profile-io";
 import { actions, useStore } from "@/lib/store";
 import type { Profile } from "@/lib/types";
 
+// Mirrors buildRules() + iconStateForUrl() in entrypoints/background.ts: a
+// profile is "active" when it attaches headers to requests on the given tab.
+function profileActiveOnTab(profile: Profile, url: string | undefined) {
+  if (!profile.enabled) return false;
+  if (!profile.headers.some((h) => h.enabled && h.name.trim())) return false;
+  // DNR never rewrites requests of chrome://, about: etc. pages.
+  if (!url || !/^(https?|file):/.test(url)) return false;
+  const sites = profile.sites.filter((s) => s.enabled && s.url.trim());
+  return sites.length === 0 || sites.some((s) => url.includes(s.url.trim()));
+}
+
 function ProfileItem({
   profile,
   selected,
+  active,
 }: {
   profile: Profile;
   selected: boolean;
+  active: boolean;
 }) {
   const {
     attributes,
@@ -51,9 +64,16 @@ function ProfileItem({
         {...attributes}
         {...listeners}
         title="Drag to reorder"
-        className="h-4 w-4 shrink-0 cursor-grab rounded-sm ring-1 ring-white/10 active:cursor-grabbing"
+        className="relative h-4 w-4 shrink-0 cursor-grab rounded-sm ring-1 ring-white/10 active:cursor-grabbing"
         style={{ backgroundColor: profile.color }}
-      />
+      >
+        {active && (
+          <span
+            aria-hidden
+            className="absolute -top-1 -left-1 h-2 w-2 rounded-full bg-green-500 ring-2 ring-neutral-900"
+          />
+        )}
+      </button>
       <button
         onClick={() => actions.selectProfile(profile.id)}
         className={`min-w-0 flex-1 truncate text-left ${
@@ -72,6 +92,13 @@ export function Sidebar() {
   const enabled = useStore((s) => s.enabled);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [tabUrl, setTabUrl] = useState<string>();
+  useEffect(() => {
+    void chrome.tabs
+      .query({ active: true, currentWindow: true })
+      .then(([tab]) => setTabUrl(tab?.url));
+  }, []);
 
   async function handleImportFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -142,6 +169,7 @@ export function Sidebar() {
                   key={profile.id}
                   profile={profile}
                   selected={profile.id === selectedProfileId}
+                  active={enabled && profileActiveOnTab(profile, tabUrl)}
                 />
               ))}
             </ul>
