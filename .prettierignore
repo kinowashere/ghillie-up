@@ -1,0 +1,5 @@
+.wxt/
+.output/
+package-lock.json
+stats.html
+stats-*.json
