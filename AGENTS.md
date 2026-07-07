@@ -76,6 +76,8 @@ Popup mutates the Zustand store → store immediately auto-persists to `chrome.s
 
 ## Conventions and gotchas
 
+- **Never commit or push.** Leave staging, committing, tagging, and pushing to the user; only do so when explicitly instructed in the current request.
+
 - TypeScript 6 requires the explicit `@types/chrome` dev dependency — `chrome.*` types are not ambient without it.
 - All state mutations go through `actions` in `lib/store.ts`; components never call `useStore.setState` directly.
 - Import WXT helpers from `#imports` (e.g. `defineBackground`); project files via the `@/` alias.
