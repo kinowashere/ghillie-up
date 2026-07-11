@@ -1,17 +1,47 @@
+import { useEffect, useState } from "react";
 import { browser } from "#imports";
 import { serializeProfile } from "@/lib/profile-io";
-import { actions } from "@/lib/store";
-import type { Profile } from "@/lib/types";
+import { actions, PALETTE } from "@/lib/store";
+import type { DownloadProfileMessage, Profile } from "@/lib/types";
 
 function downloadProfile(profile: Profile) {
   const name = (profile.name || "Untitled").replace(/[\\/:*?"<>|]/g, "-");
-  void browser.downloads.download({
-    url:
-      "data:application/json;charset=utf-8," +
-      encodeURIComponent(serializeProfile(profile)),
+  // The background performs the actual download; anything started here dies
+  // in Firefox when the Save As dialog closes the popup.
+  void browser.runtime.sendMessage({
+    type: "download-profile",
     filename: `${name}.json`,
-    saveAs: true,
-  });
+    json: serializeProfile(profile),
+  } satisfies DownloadProfileMessage);
+}
+
+// Free-form hex field next to the palette swatches. Edits are kept locally
+// while typing and only committed to the store once they form a valid
+// #rrggbb color; blur reverts an unfinished draft to the stored value.
+function HexColorInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (color: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
+  return (
+    <input
+      type="text"
+      value={draft}
+      spellCheck={false}
+      onChange={(e) => {
+        const color = e.target.value;
+        setDraft(color);
+        if (/^#[0-9a-fA-F]{6}$/.test(color)) onChange(color);
+      }}
+      onBlur={() => setDraft(value)}
+      className="ml-2 w-20 rounded-md border border-neutral-700 bg-transparent px-2 py-1 font-mono text-xs outline-none placeholder:text-neutral-600 focus:border-blue-500"
+    />
+  );
 }
 
 export function SettingsTab({ profile }: { profile: Profile }) {
@@ -30,17 +60,30 @@ export function SettingsTab({ profile }: { profile: Profile }) {
         <p className="mt-1 text-xs text-neutral-400">Profile Name</p>
       </div>
 
-      <label className="flex w-fit cursor-pointer items-center gap-3">
-        <input
-          type="color"
-          value={profile.color}
-          onChange={(e) =>
-            actions.updateProfile(profile.id, { color: e.target.value })
-          }
-          className="h-10 w-10 cursor-pointer rounded-md border border-neutral-700 bg-transparent p-1"
-        />
-        <span className="text-xs text-neutral-400">Color</span>
-      </label>
+      <div>
+        {/* No native <input type="color">: Firefox closes the popup (and the
+            OS picker with it) when the picker dialog steals focus. */}
+        <div className="flex items-center gap-1.5">
+          {PALETTE.map((color) => (
+            <button
+              key={color}
+              onClick={() => actions.updateProfile(profile.id, { color })}
+              title={color}
+              style={{ backgroundColor: color }}
+              className={`h-6 w-6 cursor-pointer rounded-md ${
+                profile.color === color
+                  ? "ring-2 ring-white ring-offset-2 ring-offset-neutral-950"
+                  : "ring-1 ring-white/10 hover:ring-white/40"
+              }`}
+            />
+          ))}
+          <HexColorInput
+            value={profile.color}
+            onChange={(color) => actions.updateProfile(profile.id, { color })}
+          />
+        </div>
+        <p className="mt-1 text-xs text-neutral-400">Color</p>
+      </div>
 
       <div>
         <h3 className="mb-2 text-base font-semibold">Sites</h3>

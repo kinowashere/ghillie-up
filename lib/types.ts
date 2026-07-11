@@ -36,3 +36,14 @@ export const STORAGE_KEY = "ghillie-up";
  * (HostPermissionBanner) and the background folds it into the icon state.
  */
 export const HOST_PERMISSION = "<all_urls>";
+
+/**
+ * Popup → background request to save a profile export as a file. The
+ * background must initiate the download: in Firefox the Save As dialog
+ * steals focus, which closes the popup and kills anything it started.
+ */
+export interface DownloadProfileMessage {
+  type: "download-profile";
+  filename: string;
+  json: string;
+}

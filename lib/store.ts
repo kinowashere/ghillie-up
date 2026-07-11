@@ -9,7 +9,7 @@ import {
   type SiteEntry,
 } from "./types";
 
-const PALETTE = [
+export const PALETTE = [
   "#3b82f6",
   "#22c55e",
   "#f97316",
@@ -68,6 +68,23 @@ export async function hydrate() {
 useStore.subscribe(() => {
   if (hydrated) persist();
 });
+
+/**
+ * Appends an imported profile straight to persisted storage, bypassing the
+ * in-memory store. Used by the import page (entrypoints/import), which runs
+ * in its own document where the popup store isn't hydrated. Mirrors
+ * actions.importProfile semantics: appended last (lowest priority), selected.
+ */
+export async function importProfileToStorage(profile: Profile) {
+  const stored = await browser.storage.local.get(STORAGE_KEY);
+  const state = stored[STORAGE_KEY] as PersistedState | undefined;
+  const next: PersistedState = {
+    enabled: state?.enabled ?? true,
+    profiles: [...(state?.profiles ?? []), profile],
+    selectedProfileId: profile.id,
+  };
+  await browser.storage.local.set({ [STORAGE_KEY]: next });
+}
 
 function patchProfile(id: string, patch: (p: Profile) => Partial<Profile>) {
   useStore.setState((s) => ({

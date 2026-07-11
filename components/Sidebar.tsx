@@ -111,6 +111,18 @@ export function Sidebar() {
       .then(([tab]) => setTabUrl(tab?.url));
   }, []);
 
+  function handleImportClick() {
+    // Firefox closes the popup when the native file picker opens, killing an
+    // in-popup import before the file is delivered. Hand off to a regular
+    // extension tab (entrypoints/import) there; Chrome keeps the popup open,
+    // so it uses the inline file input.
+    if (import.meta.env.FIREFOX) {
+      void browser.tabs.create({ url: browser.runtime.getURL("/import.html") });
+      return;
+    }
+    fileInputRef.current?.click();
+  }
+
   async function handleImportFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -148,7 +160,7 @@ export function Sidebar() {
           + New
         </button>
         <button
-          onClick={() => fileInputRef.current?.click()}
+          onClick={handleImportClick}
           title="Import profile from a JSON file"
           className="flex-1 rounded-md border border-neutral-700 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
         >

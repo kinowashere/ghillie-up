@@ -23,9 +23,11 @@ npm run dev            # launches Chrome with the extension loaded, hot-reloads
 npm run dev:firefox    # same, but launches Firefox
 ```
 
-### Firefox host permissions
+### Firefox notes
 
 Firefox (MV3) treats the `<all_urls>` host permission as optional: users can decline it at install or revoke it later, and header rules silently stop matching without it. The popup shows a banner with a "Grant access" button when access is missing, and the toolbar icon stays in the idle state. Chrome grants host permissions at install, so none of this appears there.
+
+Firefox also closes the popup whenever a native dialog steals focus, so "Import" opens a small dedicated tab there (Chrome imports inline in the popup), and profile downloads are initiated by the background script.
 
 ### Testing against Brave (or another Chromium browser)
 

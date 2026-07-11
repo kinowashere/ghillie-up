@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Import profile — Ghillie Up</title>
+  </head>
+  <body class="bg-neutral-950 text-neutral-100">
+    <main
+      class="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 p-8 text-center text-sm"
+    >
+      <h1 class="text-lg font-semibold">Import profile</h1>
+      <p class="text-neutral-400">
+        Choose a profile JSON file previously exported with “Download profile”.
+        The imported profile is added to the end of the list.
+      </p>
+      <label
+        class="cursor-pointer rounded-md border border-neutral-700 px-4 py-2 text-neutral-200 hover:bg-neutral-800"
+      >
+        Choose file…
+        <input
+          id="file"
+          type="file"
+          accept=".json,application/json"
+          class="hidden"
+        />
+      </label>
+      <p id="status" class="min-h-5 text-neutral-400"></p>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

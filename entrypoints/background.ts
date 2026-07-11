@@ -1,6 +1,10 @@
 import { browser, defineBackground, type Browser } from "#imports";
 import { HOST_PERMISSION, STORAGE_KEY } from "@/lib/types";
-import type { PersistedState, Profile } from "@/lib/types";
+import type {
+  DownloadProfileMessage,
+  PersistedState,
+  Profile,
+} from "@/lib/types";
 
 const ALL_RESOURCE_TYPES = [
   "main_frame",
@@ -163,6 +167,50 @@ async function updateTabIcon(tabId: number, url: string | undefined) {
     .catch(() => {});
 }
 
+// --- Profile export -------------------------------------------------------
+
+async function downloadJson(filename: string, json: string) {
+  try {
+    // Firefox's downloads API mishandles data: URLs (bugzil.la/1638226), but
+    // its background is an event page where Blob object URLs are available.
+    // Chrome's service worker lacks URL.createObjectURL but handles data:
+    // URLs fine.
+    if (typeof URL.createObjectURL === "function") {
+      const url = URL.createObjectURL(
+        new Blob([json], { type: "application/json" }),
+      );
+      const id = await browser.downloads.download({
+        url,
+        filename,
+        saveAs: true,
+      });
+      revokeWhenDone(id, url);
+    } else {
+      await browser.downloads.download({
+        url: "data:application/json;charset=utf-8," + encodeURIComponent(json),
+        filename,
+        saveAs: true,
+      });
+    }
+  } catch (err) {
+    console.error("[ghillie-up] failed to download profile", err);
+  }
+}
+
+// An object URL must outlive the download that reads it, so only revoke once
+// the download leaves the in_progress state.
+function revokeWhenDone(downloadId: number, url: string) {
+  const listener = (delta: Browser.downloads.DownloadDelta) => {
+    if (delta.id !== downloadId) return;
+    const state = delta.state?.current;
+    if (state === "complete" || state === "interrupted") {
+      URL.revokeObjectURL(url);
+      browser.downloads.onChanged.removeListener(listener);
+    }
+  };
+  browser.downloads.onChanged.addListener(listener);
+}
+
 // Serialize rebuilds so overlapping storage events can't interleave rule updates.
 let queue: Promise<void> = Promise.resolve();
 function rebuild() {
@@ -174,6 +222,13 @@ function rebuild() {
 export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(rebuild);
   browser.runtime.onStartup.addListener(rebuild);
+  // Profile exports are downloaded from here rather than the popup: see
+  // DownloadProfileMessage in lib/types.ts.
+  browser.runtime.onMessage.addListener((message) => {
+    const msg = message as DownloadProfileMessage;
+    if (msg?.type !== "download-profile") return;
+    void downloadJson(msg.filename, msg.json);
+  });
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes[STORAGE_KEY]) rebuild();
   });

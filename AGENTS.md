@@ -39,13 +39,14 @@ There are no tests; `npm run compile` is the verification gate.
 | `lib/profile-io.ts`         | Profile export/import JSON (de)serialization                                                                           |
 | `entrypoints/background.ts` | Rebuilds DNR dynamic rules from persisted state                                                                        |
 | `entrypoints/popup/`        | Popup entry (`App.tsx`, `main.tsx`, `index.html`, `style.css`)                                                         |
+| `entrypoints/import/`       | Profile-import page, opened as a tab on Firefox (file pickers close the popup there)                                   |
 | `components/`               | `Sidebar` (profile list, global switch), `ProfilePanel`, `HeadersTab`, `SettingsTab`, `Switch`, `HostPermissionBanner` |
 
 ## Business logic (keep this section accurate)
 
 ### Data flow
 
-Popup mutates the Zustand store → store immediately auto-persists to `browser.storage.local` under key `ghillie-up` → background's `browser.storage.onChanged` listener rebuilds DNR rules. The popup never talks to the background directly; storage is the only channel.
+Popup mutates the Zustand store → store immediately auto-persists to `browser.storage.local` under key `ghillie-up` → background's `browser.storage.onChanged` listener rebuilds DNR rules. State never flows to the background via messaging; storage is the channel. The single runtime message is `DownloadProfileMessage` (profile export, see below), which carries no state.
 
 ### Rule building (`entrypoints/background.ts`)
 
@@ -80,15 +81,17 @@ Popup mutates the Zustand store → store immediately auto-persists to `browser.
 
 ### Profile export/import (`lib/profile-io.ts`)
 
-- "Download profile" (SettingsTab) exports one profile as `{name}.json` via `browser.downloads.download({ saveAs: true })` so the user picks the location; filename-invalid characters in the name are replaced with `-`. Requires the `downloads` permission.
+- "Download profile" (SettingsTab) exports one profile as `{name}.json`; filename-invalid characters in the name are replaced with `-`. The popup sends a `DownloadProfileMessage` (`lib/types.ts`) and the **background** calls `browser.downloads.download({ saveAs: true })` so the user picks the location — a download started from the popup dies in Firefox because the Save As dialog steals focus and closes the popup. The URL scheme is feature-detected: Blob object URL where `URL.createObjectURL` exists (Firefox's event page; its downloads API mishandles data: URLs, bugzil.la/1638226), data: URL otherwise (Chrome's service worker has no `createObjectURL`), revoked after the download completes. Requires the `downloads` permission.
 - The JSON contains `name`, `color`, `headers` (name/value/enabled), `sites` (url/enabled) — **no ids**. Import (`parseProfile`) regenerates all ids, so importing never collides with existing profiles.
 - Import ("Import" button in the Sidebar) requires `name` (string), `headers` and `sites` (arrays) to be present; entry fields and `color` fall back to defaults. The imported profile is always enabled, appended to the end of the list (lowest priority), and selected.
+- Import is browser-branched (`import.meta.env.FIREFOX` in `Sidebar`): Chrome uses the popup's inline hidden file input; Firefox opens `entrypoints/import/` in a tab, because the popup closes when the native file picker opens and the in-popup import dies with it. The import page writes straight to storage via `importProfileToStorage` (`lib/store.ts`, mirrors `actions.importProfile` semantics) and then closes its own tab.
 
 ## Conventions and gotchas
 
 - **Never commit or push.** Leave staging, committing, tagging, and pushing to the user; only do so when explicitly instructed in the current request.
 
 - **Never use the global `chrome` namespace.** Import `browser` (API) and `Browser` (types) from `#imports` — they work in both Chrome and Firefox. There is no `@types/chrome` dependency and no ambient `chrome` type.
+- **Avoid UI that opens native OS dialogs from the popup** (e.g. `<input type="color">`, `<input type="file">`): Firefox closes the popup when the dialog steals focus. Profile colors use inline palette swatches (`PALETTE` from `lib/store.ts`) + a hex text field in `SettingsTab`; file import goes through a dedicated tab on Firefox; downloads run in the background script.
 - All state mutations go through `actions` in `lib/store.ts`; components never call `useStore.setState` directly.
 - Import WXT helpers from `#imports` (e.g. `defineBackground`, `browser`); project files via the `@/` alias.
 - Manifest permissions are `storage` + `declarativeNetRequest` + `downloads` with `<all_urls>` host permissions — adding features that need more permissions means editing `wxt.config.ts`.
