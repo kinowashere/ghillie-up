@@ -12,7 +12,7 @@ export function Switch({ checked, onChange, title }: SwitchProps) {
       aria-checked={checked}
       title={title}
       onClick={() => onChange(!checked)}
-      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+      className={`relative h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${
         checked ? "bg-blue-500" : "bg-neutral-700"
       }`}
     >

@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { HeadersTab } from "./HeadersTab";
 import { SettingsTab } from "./SettingsTab";
-import { Switch } from "./Switch";
-import { actions } from "@/lib/store";
 import type { Profile } from "@/lib/types";
 
 type Tab = "headers" | "settings";
@@ -20,11 +18,6 @@ export function ProfilePanel({ profile }: { profile: Profile }) {
         <h1 className="min-w-0 flex-1 truncate font-medium">
           {profile.name || "Untitled"}
         </h1>
-        <Switch
-          checked={profile.enabled}
-          onChange={(v) => actions.updateProfile(profile.id, { enabled: v })}
-          title="Enable/disable this profile"
-        />
       </div>
 
       <nav className="flex shrink-0 gap-6 border-b border-neutral-800 px-4">

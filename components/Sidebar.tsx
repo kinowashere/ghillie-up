@@ -57,7 +57,7 @@ function ProfileItem({
       ref={setNodeRef}
       onClick={() => actions.selectProfile(profile.id)}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${
+      className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${
         isDragging ? "z-10 opacity-70" : ""
       } ${selected ? "bg-neutral-800" : "hover:bg-neutral-800/50"}`}
     >
@@ -82,6 +82,16 @@ function ProfileItem({
       >
         {profile.name || "Untitled"}
       </button>
+      <span
+        className="flex opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Switch
+          checked={profile.enabled}
+          onChange={(v) => actions.updateProfile(profile.id, { enabled: v })}
+          title="Enable/disable this profile"
+        />
+      </span>
     </li>
   );
 }
@@ -125,7 +135,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex w-52 shrink-0 flex-col border-r border-neutral-800 bg-neutral-900/60">
+    <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-800 bg-neutral-900/60">
       <h2 className="px-4 pt-4 pb-2 text-base font-semibold">Profiles</h2>
 
       <div className="flex gap-1.5 px-2 pb-2">
