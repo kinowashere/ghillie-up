@@ -21,11 +21,14 @@ export default defineConfig({
         gecko: {
           // Must match the extension ID of the AMO listing.
           id: "ghillie-up@kinowashere.github.io",
-          // DNR is stable from 113; 128 adds the host-permission prompt in
-          // the install dialog.
-          strict_min_version: "128.0",
+          // Floor for `data_collection_permissions` (140 desktop / 142
+          // Android); everything else used (DNR, MV3 action) needs far less.
+          strict_min_version: "140.0",
           // AMO requires a data-collection declaration for new submissions.
           data_collection_permissions: { required: ["none"] },
+        },
+        gecko_android: {
+          strict_min_version: "142.0",
         },
       },
     }),
