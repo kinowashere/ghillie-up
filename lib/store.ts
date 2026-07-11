@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { arrayMove } from "@dnd-kit/sortable";
+import { browser } from "#imports";
 import {
   STORAGE_KEY,
   type HeaderEntry,
@@ -44,11 +45,11 @@ function snapshot(): PersistedState {
 }
 
 function persist() {
-  void chrome.storage.local.set({ [STORAGE_KEY]: snapshot() });
+  void browser.storage.local.set({ [STORAGE_KEY]: snapshot() });
 }
 
 export async function hydrate() {
-  const stored = await chrome.storage.local.get(STORAGE_KEY);
+  const stored = await browser.storage.local.get(STORAGE_KEY);
   const saved = stored[STORAGE_KEY] as PersistedState | undefined;
   if (saved) {
     useStore.setState(saved);
@@ -59,7 +60,7 @@ export async function hydrate() {
       profiles: [profile],
       selectedProfileId: profile.id,
     });
-    await chrome.storage.local.set({ [STORAGE_KEY]: snapshot() });
+    await browser.storage.local.set({ [STORAGE_KEY]: snapshot() });
   }
   hydrated = true;
 }

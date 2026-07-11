@@ -46,17 +46,27 @@ jobs:
 
       - run: npm run zip
 
+      # Also produces the *-sources.zip that AMO requires for review.
+      - run: npm run zip:firefox
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          gh release create "v$VERSION" .output/*-chrome.zip --title "v$VERSION" --generate-notes
+          gh release create "v$VERSION" .output/*-chrome.zip .output/*-firefox.zip --title "v$VERSION" --generate-notes
 
-      - name: Submit to Chrome Web Store
-        run: npx wxt submit --chrome-zip .output/*-chrome.zip
+      - name: Submit to Chrome Web Store and Firefox Add-ons
+        run: |
+          npx wxt submit \
+            --chrome-zip .output/*-chrome.zip \
+            --firefox-zip .output/*-firefox.zip \
+            --firefox-sources-zip .output/*-sources.zip
         env:
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
           CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
           CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          FIREFOX_EXTENSION_ID: ${{ secrets.FIREFOX_EXTENSION_ID }}
+          FIREFOX_JWT_ISSUER: ${{ secrets.FIREFOX_JWT_ISSUER }}
+          FIREFOX_JWT_SECRET: ${{ secrets.FIREFOX_JWT_SECRET }}

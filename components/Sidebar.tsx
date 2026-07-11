@@ -16,6 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { browser } from "#imports";
 import { Switch } from "./Switch";
 import { parseProfile } from "@/lib/profile-io";
 import { actions, useStore } from "@/lib/store";
@@ -105,7 +106,7 @@ export function Sidebar() {
 
   const [tabUrl, setTabUrl] = useState<string>();
   useEffect(() => {
-    void chrome.tabs
+    void browser.tabs
       .query({ active: true, currentWindow: true })
       .then(([tab]) => setTabUrl(tab?.url));
   }, []);

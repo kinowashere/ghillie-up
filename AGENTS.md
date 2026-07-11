@@ -6,7 +6,7 @@ Guidance for AI agents working on Ghillie Up.
 
 ## What this project is
 
-Ghillie Up is an open-source Chrome extension (ModHeader-style) for modifying HTTP request headers. Users configure **Profiles** — each with a list of headers to inject and a list of sites where they apply — through a popup UI. Header rewriting is done natively by Chrome via `declarativeNetRequest` (DNR) dynamic rules; no code runs per request.
+Ghillie Up is an open-source browser extension (ModHeader-style) for Chrome and Firefox that modifies HTTP request headers. Users configure **Profiles** — each with a list of headers to inject and a list of sites where they apply — through a popup UI. Header rewriting is done natively by the browser via `declarativeNetRequest` (DNR) dynamic rules; no code runs per request. Both targets build as MV3 (`manifestVersion: 3` in `wxt.config.ts` — without it WXT would build Firefox as MV2, where the `action` API doesn't exist).
 
 ## Stack
 
@@ -19,30 +19,33 @@ Ghillie Up is an open-source Chrome extension (ModHeader-style) for modifying HT
 ## Commands
 
 ```sh
-npm run dev        # launch Chrome with the extension loaded, hot-reload
-npm run build      # outputs .output/chrome-mv3/
-npm run zip        # distributable zip
-npm run compile    # typecheck (tsc --noEmit) — run this to verify changes
+npm run dev            # launch Chrome with the extension loaded, hot-reload
+npm run dev:firefox    # same, but Firefox
+npm run build          # outputs .output/chrome-mv3/
+npm run build:firefox  # outputs .output/firefox-mv3/
+npm run zip            # distributable Chrome zip
+npm run zip:firefox    # distributable Firefox zip + AMO sources zip
+npm run compile        # typecheck (tsc --noEmit) — run this to verify changes
 ```
 
 There are no tests; `npm run compile` is the verification gate.
 
 ## Layout
 
-| Path                        | Role                                                                                           |
-| --------------------------- | ---------------------------------------------------------------------------------------------- |
-| `lib/types.ts`              | Data model (`Profile`, `HeaderEntry`, `SiteEntry`, `PersistedState`) and `STORAGE_KEY`         |
-| `lib/store.ts`              | Zustand store, all mutations in `actions`, hydration + immediate persistence                   |
-| `lib/profile-io.ts`         | Profile export/import JSON (de)serialization                                                   |
-| `entrypoints/background.ts` | Rebuilds DNR dynamic rules from persisted state                                                |
-| `entrypoints/popup/`        | Popup entry (`App.tsx`, `main.tsx`, `index.html`, `style.css`)                                 |
-| `components/`               | `Sidebar` (profile list, global switch), `ProfilePanel`, `HeadersTab`, `SettingsTab`, `Switch` |
+| Path                        | Role                                                                                                                   |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `lib/types.ts`              | Data model (`Profile`, `HeaderEntry`, `SiteEntry`, `PersistedState`), `STORAGE_KEY`, `HOST_PERMISSION`                 |
+| `lib/store.ts`              | Zustand store, all mutations in `actions`, hydration + immediate persistence                                           |
+| `lib/profile-io.ts`         | Profile export/import JSON (de)serialization                                                                           |
+| `entrypoints/background.ts` | Rebuilds DNR dynamic rules from persisted state                                                                        |
+| `entrypoints/popup/`        | Popup entry (`App.tsx`, `main.tsx`, `index.html`, `style.css`)                                                         |
+| `components/`               | `Sidebar` (profile list, global switch), `ProfilePanel`, `HeadersTab`, `SettingsTab`, `Switch`, `HostPermissionBanner` |
 
 ## Business logic (keep this section accurate)
 
 ### Data flow
 
-Popup mutates the Zustand store → store immediately auto-persists to `chrome.storage.local` under key `ghillie-up` → background's `chrome.storage.onChanged` listener rebuilds DNR rules. The popup never talks to the background directly; storage is the only channel.
+Popup mutates the Zustand store → store immediately auto-persists to `browser.storage.local` under key `ghillie-up` → background's `browser.storage.onChanged` listener rebuilds DNR rules. The popup never talks to the background directly; storage is the only channel.
 
 ### Rule building (`entrypoints/background.ts`)
 
@@ -55,12 +58,19 @@ Popup mutates the Zustand store → store immediately auto-persists to `chrome.s
 - Rebuilds are serialized through a promise queue so overlapping storage events can't interleave `updateDynamicRules` calls.
 - Rules are rebuilt from scratch each time (remove all existing IDs, add new); rule IDs are sequential from 1 and not stable across rebuilds.
 
+### Host permissions (Firefox)
+
+- Chrome grants the `<all_urls>` host permission at install; Firefox MV3 treats host permissions as optional — the user can decline at install or revoke later. Without host access, DNR `modifyHeaders` rules silently stop matching (rules stay registered and resume when access is granted).
+- The background checks `browser.permissions.contains({ origins: [HOST_PERMISSION] })` on every rebuild and folds the result into `matchers.hasHostAccess`: without host access the icon never shows "active" (falls back to "idle"). `permissions.onAdded`/`onRemoved` trigger rebuilds.
+- The popup renders `HostPermissionBanner` (top of `App.tsx`) when access is missing, with a "Grant access" button calling `browser.permissions.request` (must run in a user gesture handler). On Chrome the banner never appears.
+- Firefox-only manifest keys (`browser_specific_settings.gecko`: AMO extension ID, `strict_min_version`, `data_collection_permissions`) live in `wxt.config.ts` behind a `browser === "firefox"` guard so they don't leak into Chrome builds.
+
 ### Toolbar icon (`entrypoints/background.ts`)
 
-- The action icon reflects three states per tab: **active** (at least one rule attaches headers to the tab's URL), **idle** (extension on, but no rule matches this tab, or no profile produces rules), **disabled** (global kill switch off).
+- The action icon reflects three states per tab: **active** (at least one rule attaches headers to the tab's URL), **idle** (extension on, but no rule matches this tab, no profile produces rules, or host access is missing — see "Host permissions" above), **disabled** (global kill switch off).
 - Each state has its own PNG set: `public/icon/` (active — green→blue gradient dot), `public/icon-idle/` (purple→blue dot), `public/icon-disabled/` (gray dot) — same filenames (`16/32/48/96/128.png`, each 2x its nominal size) in each. The sets are resized from the source art `active.png` / `idle.png` / `disabled.png` in the repo root; replace the files to change the look (no code change needed).
 - Matching mirrors rule building: it's derived from the just-built rules (`matchers`), using substring checks against the tab URL. Non-webby tabs (`chrome://`, `about:` …) always show idle since DNR doesn't rewrite their requests. This is a per-tab-URL approximation: a rule can still match a page's cross-origin subresources even when the tab URL itself doesn't match.
-- Icons are applied to all tabs after every rebuild, and re-applied on `tabs.onUpdated` because Chrome clears tab-specific icons on navigation. The global (no-`tabId`) icon serves as the fallback for new tabs. No extra permissions needed: `tabs.query` URLs are readable via the existing `<all_urls>` host permission.
+- Icons are applied to all tabs after every rebuild, and re-applied on `tabs.onUpdated` because the browser clears tab-specific icons on navigation. The global (no-`tabId`) icon serves as the fallback for new tabs. No extra permissions needed: `tabs.query` URLs are readable via the existing `<all_urls>` host permission.
 
 ### Persistence (`lib/store.ts`)
 
@@ -70,7 +80,7 @@ Popup mutates the Zustand store → store immediately auto-persists to `chrome.s
 
 ### Profile export/import (`lib/profile-io.ts`)
 
-- "Download profile" (SettingsTab) exports one profile as `{name}.json` via `chrome.downloads.download({ saveAs: true })` so the user picks the location; filename-invalid characters in the name are replaced with `-`. Requires the `downloads` permission.
+- "Download profile" (SettingsTab) exports one profile as `{name}.json` via `browser.downloads.download({ saveAs: true })` so the user picks the location; filename-invalid characters in the name are replaced with `-`. Requires the `downloads` permission.
 - The JSON contains `name`, `color`, `headers` (name/value/enabled), `sites` (url/enabled) — **no ids**. Import (`parseProfile`) regenerates all ids, so importing never collides with existing profiles.
 - Import ("Import" button in the Sidebar) requires `name` (string), `headers` and `sites` (arrays) to be present; entry fields and `color` fall back to defaults. The imported profile is always enabled, appended to the end of the list (lowest priority), and selected.
 
@@ -78,8 +88,8 @@ Popup mutates the Zustand store → store immediately auto-persists to `chrome.s
 
 - **Never commit or push.** Leave staging, committing, tagging, and pushing to the user; only do so when explicitly instructed in the current request.
 
-- TypeScript 6 requires the explicit `@types/chrome` dev dependency — `chrome.*` types are not ambient without it.
+- **Never use the global `chrome` namespace.** Import `browser` (API) and `Browser` (types) from `#imports` — they work in both Chrome and Firefox. There is no `@types/chrome` dependency and no ambient `chrome` type.
 - All state mutations go through `actions` in `lib/store.ts`; components never call `useStore.setState` directly.
-- Import WXT helpers from `#imports` (e.g. `defineBackground`); project files via the `@/` alias.
+- Import WXT helpers from `#imports` (e.g. `defineBackground`, `browser`); project files via the `@/` alias.
 - Manifest permissions are `storage` + `declarativeNetRequest` + `downloads` with `<all_urls>` host permissions — adding features that need more permissions means editing `wxt.config.ts`.
 - Entity IDs are `crypto.randomUUID()`.

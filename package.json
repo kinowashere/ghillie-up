@@ -1,6 +1,6 @@
 {
   "name": "ghillie-up",
-  "description": "Open-source HTTP header modifier Chrome extension",
+  "description": "Open-source HTTP header modifier browser extension",
   "private": true,
   "version": "0.2.0",
   "type": "module",
@@ -8,7 +8,9 @@
     "dev": "wxt",
     "dev:firefox": "wxt -b firefox",
     "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
     "compile": "tsc --noEmit",
     "format:write": "prettier --write .",
     "format:verify": "prettier --check .",
@@ -25,7 +27,6 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.2",
-    "@types/chrome": "^0.2.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@wxt-dev/module-react": "^1.2.2",

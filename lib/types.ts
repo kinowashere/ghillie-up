@@ -29,3 +29,10 @@ export interface PersistedState {
 }
 
 export const STORAGE_KEY = "ghillie-up";
+
+/**
+ * The host permission DNR needs to modify request headers. Chrome grants it
+ * at install; Firefox treats it as optional, so the popup checks/requests it
+ * (HostPermissionBanner) and the background folds it into the icon state.
+ */
+export const HOST_PERMISSION = "<all_urls>";

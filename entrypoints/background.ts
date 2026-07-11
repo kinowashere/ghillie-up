@@ -1,5 +1,6 @@
-import { defineBackground } from "#imports";
-import { STORAGE_KEY, type PersistedState, type Profile } from "@/lib/types";
+import { browser, defineBackground, type Browser } from "#imports";
+import { HOST_PERMISSION, STORAGE_KEY } from "@/lib/types";
+import type { PersistedState, Profile } from "@/lib/types";
 
 const ALL_RESOURCE_TYPES = [
   "main_frame",
@@ -15,10 +16,10 @@ const ALL_RESOURCE_TYPES = [
   "media",
   "websocket",
   "other",
-] as chrome.declarativeNetRequest.ResourceType[];
+] as Browser.declarativeNetRequest.ResourceType[];
 
-function buildRules(profiles: Profile[]): chrome.declarativeNetRequest.Rule[] {
-  const rules: chrome.declarativeNetRequest.Rule[] = [];
+function buildRules(profiles: Profile[]): Browser.declarativeNetRequest.Rule[] {
+  const rules: Browser.declarativeNetRequest.Rule[] = [];
   let ruleId = 1;
 
   const active = profiles.filter((p) => p.enabled);
@@ -28,7 +29,7 @@ function buildRules(profiles: Profile[]): chrome.declarativeNetRequest.Rule[] {
 
     const requestHeaders = headers.map((h) => ({
       header: h.name.trim(),
-      operation: "set" as chrome.declarativeNetRequest.HeaderOperation,
+      operation: "set" as Browser.declarativeNetRequest.HeaderOperation,
       value: h.value,
     }));
 
@@ -38,7 +39,7 @@ function buildRules(profiles: Profile[]): chrome.declarativeNetRequest.Rule[] {
 
     // Sites are substring filters. A profile with no enabled sites applies everywhere.
     const sites = profile.sites.filter((s) => s.enabled && s.url.trim());
-    const conditions: chrome.declarativeNetRequest.RuleCondition[] =
+    const conditions: Browser.declarativeNetRequest.RuleCondition[] =
       sites.length
         ? sites.map((s) => ({
             urlFilter: s.url.trim(),
@@ -51,7 +52,7 @@ function buildRules(profiles: Profile[]): chrome.declarativeNetRequest.Rule[] {
         id: ruleId++,
         priority,
         action: {
-          type: "modifyHeaders" as chrome.declarativeNetRequest.RuleActionType,
+          type: "modifyHeaders" as Browser.declarativeNetRequest.RuleActionType,
           requestHeaders,
         },
         condition,
@@ -63,20 +64,27 @@ function buildRules(profiles: Profile[]): chrome.declarativeNetRequest.Rule[] {
 }
 
 async function doRebuild() {
-  const stored = await chrome.storage.local.get(STORAGE_KEY);
+  const stored = await browser.storage.local.get(STORAGE_KEY);
   const state = stored[STORAGE_KEY] as PersistedState | undefined;
+  // Firefox treats host permissions as optional: the user can decline
+  // <all_urls> at install or revoke it later, and DNR modifyHeaders rules
+  // silently stop matching without it. Chrome grants it unconditionally.
+  const hasHostAccess = await browser.permissions.contains({
+    origins: [HOST_PERMISSION],
+  });
 
-  const existing = await chrome.declarativeNetRequest.getDynamicRules();
+  const existing = await browser.declarativeNetRequest.getDynamicRules();
   const removeRuleIds = existing.map((r) => r.id);
   const addRules = state?.enabled ? buildRules(state.profiles) : [];
 
-  await chrome.declarativeNetRequest.updateDynamicRules({
+  await browser.declarativeNetRequest.updateDynamicRules({
     removeRuleIds,
     addRules,
   });
 
   matchers = {
     enabled: state?.enabled ?? false,
+    hasHostAccess,
     matchesAll: addRules.some((r) => !r.condition.urlFilter),
     sites: addRules.flatMap((r) => r.condition.urlFilter ?? []),
   };
@@ -93,10 +101,17 @@ type IconState = "active" | "idle" | "disabled";
 
 // Mirror of the last built rules, used to answer "would any rule match this
 // tab's URL?" without re-reading storage on every tab event.
-let matchers = { enabled: false, matchesAll: false, sites: [] as string[] };
+let matchers = {
+  enabled: false,
+  hasHostAccess: false,
+  matchesAll: false,
+  sites: [] as string[],
+};
 
 function iconStateForUrl(url: string | undefined): IconState {
   if (!matchers.enabled) return "disabled";
+  // Without host access no rule modifies anything, so never claim "active".
+  if (!matchers.hasHostAccess) return "idle";
   // DNR never rewrites requests of chrome://, about: etc. pages.
   if (!url || !/^(https?|file):/.test(url)) return "idle";
   if (matchers.matchesAll) return "active";
@@ -117,21 +132,21 @@ function iconPaths(state: IconState): Record<number, string> {
 }
 
 async function applyIcons() {
-  // Global default: what new tabs (and tabs Chrome hasn't told us about)
-  // show. Per-tab icons set below override it where a URL is known.
+  // Global default: what new tabs (and tabs the browser hasn't told us
+  // about) show. Per-tab icons set below override it where a URL is known.
   const fallback: IconState = !matchers.enabled
     ? "disabled"
-    : matchers.matchesAll
+    : matchers.hasHostAccess && matchers.matchesAll
       ? "active"
       : "idle";
-  await chrome.action.setIcon({ path: iconPaths(fallback) });
+  await browser.action.setIcon({ path: iconPaths(fallback) });
 
-  const tabs = await chrome.tabs.query({});
+  const tabs = await browser.tabs.query({});
   await Promise.all(
     tabs.map((tab) =>
       tab.id === undefined
         ? undefined
-        : chrome.action
+        : browser.action
             .setIcon({
               tabId: tab.id,
               path: iconPaths(iconStateForUrl(tab.url)),
@@ -143,7 +158,7 @@ async function applyIcons() {
 }
 
 async function updateTabIcon(tabId: number, url: string | undefined) {
-  await chrome.action
+  await browser.action
     .setIcon({ tabId, path: iconPaths(iconStateForUrl(url)) })
     .catch(() => {});
 }
@@ -157,14 +172,18 @@ function rebuild() {
 }
 
 export default defineBackground(() => {
-  chrome.runtime.onInstalled.addListener(rebuild);
-  chrome.runtime.onStartup.addListener(rebuild);
-  chrome.storage.onChanged.addListener((changes, area) => {
+  browser.runtime.onInstalled.addListener(rebuild);
+  browser.runtime.onStartup.addListener(rebuild);
+  browser.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes[STORAGE_KEY]) rebuild();
   });
-  // Chrome clears tab-specific icons on navigation, so re-apply whenever a
-  // tab starts loading a page (covers navigations and reloads).
-  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // Host access can be granted (popup banner) or revoked (browser settings)
+  // at any time; either way the icon state must be recomputed.
+  browser.permissions.onAdded.addListener(rebuild);
+  browser.permissions.onRemoved.addListener(rebuild);
+  // The browser clears tab-specific icons on navigation, so re-apply whenever
+  // a tab starts loading a page (covers navigations and reloads).
+  browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status === "loading" || changeInfo.url) {
       void updateTabIcon(tabId, tab.url);
     }

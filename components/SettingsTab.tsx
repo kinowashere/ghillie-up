@@ -1,10 +1,11 @@
+import { browser } from "#imports";
 import { serializeProfile } from "@/lib/profile-io";
 import { actions } from "@/lib/store";
 import type { Profile } from "@/lib/types";
 
 function downloadProfile(profile: Profile) {
   const name = (profile.name || "Untitled").replace(/[\\/:*?"<>|]/g, "-");
-  void chrome.downloads.download({
+  void browser.downloads.download({
     url:
       "data:application/json;charset=utf-8," +
       encodeURIComponent(serializeProfile(profile)),
