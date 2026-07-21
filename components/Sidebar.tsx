@@ -212,7 +212,7 @@ export function Sidebar() {
           {enabled ? "Enabled" : "Disabled"}
         </span>
         <a
-          href="https://github.com/kinowashere/ghillie-up"
+          href="https://github.com/manuel-tm/ghillie-up"
           target="_blank"
           rel="noreferrer"
           title="View on GitHub"
